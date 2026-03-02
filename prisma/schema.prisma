@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Lab {
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  city           String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  inventoryItems InventoryItem[]
+  equipment      Equipment[]
+  alerts         Alert[]
+}
+
+model InventoryItem {
+  id           String   @id @default(cuid())
+  name         String
+  category     String
+  unit         String
+  currentStock Float
+  minThreshold Float
+  maxCapacity  Float
+  lastUpdated  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  labId        String
+  lab          Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+}
+
+model Equipment {
+  id                 String   @id @default(cuid())
+  name               String
+  type               String
+  manufacturer       String
+  model              String
+  lastService        DateTime
+  serviceIntervalDays Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  labId              String
+  lab                Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+}
+
+model Alert {
+  id        String        @id @default(cuid())
+  type      AlertType
+  severity  AlertSeverity
+  message   String
+  read      Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  labId     String?
+  lab       Lab?          @relation(fields: [labId], references: [id], onDelete: SetNull)
+}
+
+enum AlertType {
+  inventory
+  equipment
+}
+
+enum AlertSeverity {
+  warning
+  critical
+}
