@@ -1,26 +1,36 @@
-import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { addDays, differenceInCalendarDays } from "date-fns";
-import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { clerkMiddleware, requireAuth } from "@clerk/express";
 import { z } from "zod";
+import { env, clerkPublishableKey, hasClerkKeys } from "./env";
+import { prisma } from "./prisma";
 
-const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
-const prisma = new PrismaClient({ adapter });
 const app = express();
-const port = Number(process.env.API_PORT ?? 4000);
-const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:8080";
-const clerkPublishableKey =
-  process.env.CLERK_PUBLISHABLE_KEY ?? process.env.VITE_CLERK_PUBLISHABLE_KEY;
-const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-const hasClerkKeys = Boolean(clerkPublishableKey && clerkSecretKey);
-const isProduction = process.env.NODE_ENV === "production";
+const allowedOrigins = env.FRONTEND_ORIGIN.split(",").map((origin) => origin.trim());
 
-app.use(cors({ origin: frontendOrigin, credentials: true }));
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+app.use(helmet());
+app.use(
+  rateLimit({
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+    max: env.RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 app.use(express.json());
-if (!hasClerkKeys && isProduction) {
+
+if (!hasClerkKeys && env.NODE_ENV === "production") {
   throw new Error(
     "Missing Clerk keys. Set CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY (or VITE_CLERK_PUBLISHABLE_KEY)."
   );
@@ -30,7 +40,7 @@ if (hasClerkKeys) {
   app.use(
     clerkMiddleware({
       publishableKey: clerkPublishableKey,
-      secretKey: clerkSecretKey,
+      secretKey: env.CLERK_SECRET_KEY,
     })
   );
 } else {
@@ -38,6 +48,10 @@ if (hasClerkKeys) {
     "[warn] Clerk keys missing. Running API without auth middleware in local mode.\n"
   );
 }
+
+app.get("/", (_req, res) => {
+  res.json({ service: "asset-sync-api", status: "ok" });
+});
 
 function getInventoryStatus(currentStock: number, minThreshold: number): "sufficient" | "low" | "critical" {
   if (currentStock <= minThreshold * 0.5) return "critical";
@@ -322,6 +336,6 @@ app.get("/api/dashboard", async (_req, res) => {
   });
 });
 
-app.listen(port, () => {
-  process.stdout.write(`API running on http://localhost:${port}\n`);
+app.listen(env.API_PORT, () => {
+  process.stdout.write(`API running on http://localhost:${env.API_PORT}\n`);
 });
